@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+  # ── Backend API ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart_city_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=0364d27c652425fa5de18621030caa0aa4f295ed9ef65d43ef265cb7e827ec83
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./smart_city.db}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    volumes:
+      - ./backend:/app          # Hot-reload in development
+      - db_data:/app/data       # Persist SQLite database
+    networks:
+      - smart_city_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smart_city_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://backend:8000/api
+      - VITE_WS_URL=ws://backend:8000/ws/dashboard
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - smart_city_net
+
+  # ── PostgreSQL (Production) ───────────────────────────────────
+  # Uncomment for PostgreSQL support
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: smart_city_postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: smart_city_db
+  #     POSTGRES_USER: ${POSTGRES_USER:-cityuser}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-citypass123}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - smart_city_net
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cityuser}"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  
+volumes:
+  db_data:
+  # postgres_data:
+
+networks:
+  smart_city_net:
+    driver: bridge
